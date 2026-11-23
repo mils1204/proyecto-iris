@@ -28,6 +28,9 @@
   .bar { height: 8px; background: #22304d; border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--acc); }
   .score { font-size: 15px; color: var(--ink); }
+  .ball { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #ffcc33 45%, #e08a00);
+    box-shadow: 0 0 0 4px rgba(255,204,51,.35), 0 0 26px #ffcc33; }
+  .cam.game video, .cam.game canvas.ov { opacity: .35; }
 </style>
 </head>
 <body>
@@ -46,6 +49,9 @@
   <div class="row">
     <button id="btnCal" class="sec" disabled>🎯 Calibrar</button>
     <button id="btnEx" class="sec" disabled>👁 Ejercicio</button>
+  </div>
+  <div class="row">
+    <button id="btnGame" class="sec" disabled>🎮 Juego: mueve el círculo con la mirada</button>
   </div>
   <div class="panel">
     <div class="bars" id="bars"></div>
@@ -81,7 +87,7 @@ $('btnStart').addEventListener('click', async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
     video.srcObject = stream; await video.play();
-    $('btnStart').disabled = true; $('btnCal').disabled = false; $('btnEx').disabled = false;
+    $('btnStart').disabled = true; $('btnCal').disabled = false; $('btnEx').disabled = false; $('btnGame').disabled = false;
     running = true; requestAnimationFrame(loop);
   } catch (e) { $('dir').textContent = 'Sin permiso de cámara'; }
 });
@@ -169,6 +175,34 @@ $('btnCal').addEventListener('click', async () => {
   $('score').textContent = 'Calibrado. Ahora toca 👁 Ejercicio.';
   $('btnCal').disabled = $('btnEx').disabled = false;
   setTimeout(() => { $('msg').textContent = ''; }, 1500);
+});
+
+// ---------- Juego: el círculo avanza hacia donde miras; mirando al centro se detiene ----------
+const STEP = { izquierda: [-1, 0], derecha: [1, 0], arriba: [0, -1], abajo: [0, 1] };
+let game = null;
+$('btnGame').addEventListener('click', () => {
+  if (game) {   // segundo toque: salir del juego
+    cancelAnimationFrame(game.raf); game = null;
+    $('stage').replaceChildren(); $('msg').textContent = ''; document.querySelector('.cam').classList.remove('game');
+    $('btnGame').textContent = '🎮 Juego: mueve el círculo con la mirada'; $('btnCal').disabled = $('btnEx').disabled = false;
+    return;
+  }
+  const ball = document.createElement('div'); ball.className = 'ball';
+  $('stage').replaceChildren(ball);
+  document.querySelector('.cam').classList.add('game');
+  $('btnGame').textContent = '⏹ Salir del juego'; $('btnCal').disabled = $('btnEx').disabled = true;
+  $('msg').textContent = calib ? 'Mira hacia un lado para mover el círculo' : 'Tip: calibra primero para que responda mejor';
+  game = { x: 50, y: 50, last: performance.now(), raf: 0 };
+  const SPEED = 28;   // % de la pantalla por segundo
+  const tick = (now) => {
+    if (!game) return;
+    const dt = Math.min(0.1, (now - game.last) / 1000); game.last = now;
+    const s = STEP[current];
+    if (s) { game.x = Math.max(4, Math.min(96, game.x + s[0] * SPEED * dt)); game.y = Math.max(4, Math.min(96, game.y + s[1] * SPEED * dt)); }
+    ball.style.left = game.x + '%'; ball.style.top = game.y + '%';
+    game.raf = requestAnimationFrame(tick);
+  };
+  game.raf = requestAnimationFrame(tick);
 });
 
 // ---------- Ejercicio: seguir el punto; cuenta como hecho si miras hacia ahí ≥ 60% del tiempo ----------
