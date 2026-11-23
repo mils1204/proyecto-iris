@@ -39,8 +39,10 @@
   .pager { overflow: hidden; }
   .track { position: absolute; inset: 0; transition: transform .6s cubic-bezier(.2,.8,.3,1); }
   .page { position: absolute; left: 0; right: 0; height: 100%; display: grid; place-items: center; font: 900 clamp(44px, 14vw, 90px)/1 system-ui, sans-serif; color: #fff; }
-  .page.p1 { top: 0; background: linear-gradient(160deg, #1d6fe0, #0a2a66); }
-  .page.p2 { top: 100%; background: linear-gradient(160deg, #e0571d, #66200a); }
+  .page { grid-template-rows: auto auto auto; align-content: center; gap: 18px; padding: 0 28px; text-align: center; }
+  .page .em { font-size: clamp(70px, 22vw, 120px); }
+  .page .tx { font: 700 clamp(20px, 6vw, 30px)/1.35 Georgia, serif; }
+  .page .nm { font: 800 14px system-ui, sans-serif; letter-spacing: 2px; opacity: .7; }
   .hold { position: absolute; left: 50%; width: 60%; height: 10px; transform: translateX(-50%); background: rgba(255,255,255,.2); border-radius: 6px; overflow: hidden; z-index: 3; }
   .hold.up { top: 18px; } .hold.down { bottom: 18px; }
   .hold i { display: block; height: 100%; width: 0; background: #3fff7a; }
@@ -69,7 +71,7 @@
     <button id="btnGame" class="sec" disabled>🎮 Juego: mueve el círculo con la mirada</button>
   </div>
   <div class="row">
-    <button id="btnPages" class="sec" disabled>📄 Páginas: arriba = 1 · abajo = 2</button>
+    <button id="btnPages" class="sec" disabled>📖 Cuento: mira abajo para pasar página</button>
   </div>
   <div class="panel">
     <div class="bars" id="bars"></div>
@@ -78,7 +80,7 @@
 </main>
 <div class="full" id="calFull" hidden><div class="fmsg" id="calMsg"></div></div>
 <div class="full pager" id="pager" hidden>
-  <div class="track" id="track"><div class="page p1">PÁGINA 1</div><div class="page p2">PÁGINA 2</div></div>
+  <div class="track" id="track"></div>
   <div class="hold up"><i id="holdUp"></i></div><div class="hold down"><i id="holdDown"></i></div>
   <button class="pexit" id="pexit">✕ Salir</button>
   <div class="pinfo" id="pinfo">Mira ARRIBA o ABAJO y mantén la mirada</div>
@@ -208,8 +210,34 @@ $('btnCal').addEventListener('click', async () => {
   setTimeout(() => { $('msg').textContent = ''; }, 1500);
 });
 
-// ---------- Páginas: mirar ARRIBA 0.7 s = página 1, ABAJO 0.7 s = página 2 (los costados no cuentan) ----------
+// ---------- Cuento de 15 páginas: mirar ABAJO 0.7 s = siguiente, ARRIBA 0.7 s = anterior (los costados no cuentan) ----------
 const HOLD_MS = 700;
+const STORY = [
+  ['✨', 'Lumi, la luciérnaga que perdió su luz'],
+  ['🌙', 'En un bosque tranquilo vivía Lumi, una luciérnaga pequeña y curiosa.'],
+  ['💡', 'Cada noche su luz brillaba para guiar a los animales perdidos.'],
+  ['🌧️', 'Una noche de tormenta, una gota fría apagó su luz.'],
+  ['😢', 'Lumi lloró: "¿Cómo ayudaré a mis amigos sin brillar?"'],
+  ['🦉', 'El búho sabio le dijo: "La luz vuelve a quien la busca con valor."'],
+  ['🌲', 'Lumi voló entre los árboles más altos, buscando una chispa.'],
+  ['🐸', 'Encontró a una rana perdida que no sabía volver a su charca.'],
+  ['🤝', 'Aunque estaba a oscuras, Lumi la acompañó cantando el camino.'],
+  ['💧', 'Al llegar a la charca, la rana saltó feliz y le dio las gracias.'],
+  ['🌟', 'Entonces, una chispa pequeñita se encendió en el cuerpo de Lumi.'],
+  ['🐇', 'Luego ayudó a un conejito asustado, y su luz creció un poco más.'],
+  ['🔥', 'Con cada amigo que ayudaba, Lumi brillaba con más fuerza.'],
+  ['🌌', 'Al amanecer, su luz era la más hermosa de todo el bosque.'],
+  ['💛', 'Lumi aprendió que su luz nace de ayudar a los demás. FIN'],
+];
+const COLORS = ['#1d3f8f', '#24306b', '#1f5a8a', '#3a3f55', '#4a2f5e', '#5a4313', '#1f5a3a', '#2f6b4a', '#2a5a6b', '#1d6f8f', '#6b5a13', '#5a3a6b', '#8f3a1d', '#3a1d6b', '#8f6a1d'];
+$('track').replaceChildren(...STORY.map(([em, tx], i) => {
+  const p = document.createElement('div'); p.className = 'page';
+  p.style.top = (i * 100) + '%'; p.style.background = `linear-gradient(160deg, ${COLORS[i]}, #0b1220)`;
+  const a = document.createElement('div'); a.className = 'em'; a.textContent = em;
+  const b = document.createElement('div'); b.className = 'tx'; b.textContent = tx;
+  const c = document.createElement('div'); c.className = 'nm'; c.textContent = `${i + 1} / ${STORY.length}`;
+  p.append(a, b, c); return p;
+}));
 let pager = null;
 function closePager() { if (!pager) return; cancelAnimationFrame(pager.raf); pager = null; $('pager').hidden = true; }
 $('pexit').addEventListener('click', closePager);
@@ -220,17 +248,18 @@ $('btnPages').addEventListener('click', () => {
   const tick = (now) => {
     if (!pager) return;
     const d = current === 'arriba' || current === 'abajo' ? current : null;
-    if (d !== pager.dir) { pager.dir = d; pager.since = now; }
-    const want = d === 'arriba' ? 1 : d === 'abajo' ? 2 : 0;
-    const pct = want && want !== pager.page ? Math.min(1, (now - pager.since) / HOLD_MS) : 0;
+    if (d !== pager.dir) { pager.dir = d; pager.since = now; pager.locked = null; }
+    if (pager.locked && d === pager.locked) { pager.raf = requestAnimationFrame(tick); return; }   // tras pasar página: mira al centro antes de pasar otra
+    const want = d === 'arriba' ? pager.page - 1 : d === 'abajo' ? pager.page + 1 : 0;
+    const pct = want >= 1 && want <= STORY.length ? Math.min(1, (now - pager.since) / HOLD_MS) : 0;
     $('holdUp').style.width = (d === 'arriba' ? pct * 100 : 0) + '%';
     $('holdDown').style.width = (d === 'abajo' ? pct * 100 : 0) + '%';
     if (pct >= 1) {
-      pager.page = want;
-      $('track').style.transform = want === 2 ? 'translateY(-100%)' : 'translateY(0)';
+      pager.page = want; pager.locked = d; $('holdUp').style.width = $('holdDown').style.width = '0%';   // una página por mirada
+      $('track').style.transform = `translateY(${-(want - 1) * 100}%)`;
       try { navigator.vibrate?.(40); } catch { /* sin vibración */ }
     }
-    $('pinfo').textContent = !calib ? 'Tip: calibra primero para mejor respuesta' : `Página ${pager.page} · mira ${pager.page === 1 ? 'ABAJO' : 'ARRIBA'} para cambiar`;
+    $('pinfo').textContent = !calib ? 'Tip: calibra primero para mejor respuesta' : '⬇ mira abajo: siguiente · ⬆ mira arriba: anterior';
     pager.raf = requestAnimationFrame(tick);
   };
   pager.raf = requestAnimationFrame(tick);
