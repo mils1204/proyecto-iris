@@ -31,6 +31,21 @@
   .ball { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #ffcc33 45%, #e08a00);
     box-shadow: 0 0 0 4px rgba(255,204,51,.35), 0 0 26px #ffcc33; }
   .cam.game video, .cam.game canvas.ov { opacity: .35; }
+  /* Pantalla completa: calibración en los bordes del celular y modo páginas */
+  .full { position: fixed; inset: 0; z-index: 50; background: var(--bg); }
+  .full[hidden] { display: none; }
+  .full .target { width: 40px; height: 40px; margin: -20px 0 0 -20px; }
+  .full .fmsg { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); margin-top: 60px; text-align: center; font-weight: 800; font-size: 18px; padding: 0 20px; color: var(--dim); }
+  .pager { overflow: hidden; }
+  .track { position: absolute; inset: 0; transition: transform .6s cubic-bezier(.2,.8,.3,1); }
+  .page { position: absolute; left: 0; right: 0; height: 100%; display: grid; place-items: center; font: 900 clamp(44px, 14vw, 90px)/1 system-ui, sans-serif; color: #fff; }
+  .page.p1 { top: 0; background: linear-gradient(160deg, #1d6fe0, #0a2a66); }
+  .page.p2 { top: 100%; background: linear-gradient(160deg, #e0571d, #66200a); }
+  .hold { position: absolute; left: 50%; width: 60%; height: 10px; transform: translateX(-50%); background: rgba(255,255,255,.2); border-radius: 6px; overflow: hidden; z-index: 3; }
+  .hold.up { top: 18px; } .hold.down { bottom: 18px; }
+  .hold i { display: block; height: 100%; width: 0; background: #3fff7a; }
+  .pexit { position: absolute; right: 14px; top: 40px; z-index: 4; flex: none; width: auto; padding: 10px 14px; background: rgba(0,0,0,.45); color: #fff; border: 1px solid rgba(255,255,255,.4); }
+  .pinfo { position: absolute; left: 0; right: 0; bottom: 42px; text-align: center; z-index: 3; font-weight: 800; color: rgba(255,255,255,.85); }
 </style>
 </head>
 <body>
@@ -53,11 +68,21 @@
   <div class="row">
     <button id="btnGame" class="sec" disabled>🎮 Juego: mueve el círculo con la mirada</button>
   </div>
+  <div class="row">
+    <button id="btnPages" class="sec" disabled>📄 Páginas: arriba = 1 · abajo = 2</button>
+  </div>
   <div class="panel">
     <div class="bars" id="bars"></div>
   </div>
   <div class="panel score" id="score">Consejos: buena luz de frente, celular a 30–40 cm, cabeza quieta. Calibra primero.</div>
 </main>
+<div class="full" id="calFull" hidden><div class="fmsg" id="calMsg"></div></div>
+<div class="full pager" id="pager" hidden>
+  <div class="track" id="track"><div class="page p1">PÁGINA 1</div><div class="page p2">PÁGINA 2</div></div>
+  <div class="hold up"><i id="holdUp"></i></div><div class="hold down"><i id="holdDown"></i></div>
+  <button class="pexit" id="pexit">✕ Salir</button>
+  <div class="pinfo" id="pinfo">Mira ARRIBA o ABAJO y mantén la mirada</div>
+</div>
 <script type="module">
 import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
@@ -87,7 +112,7 @@ $('btnStart').addEventListener('click', async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
     video.srcObject = stream; await video.play();
-    $('btnStart').disabled = true; $('btnCal').disabled = false; $('btnEx').disabled = false; $('btnGame').disabled = false;
+    $('btnStart').disabled = true; $('btnCal').disabled = false; $('btnEx').disabled = false; $('btnGame').disabled = false; $('btnPages').disabled = false;
     running = true; requestAnimationFrame(loop);
   } catch (e) { $('dir').textContent = 'Sin permiso de cámara'; }
 });
@@ -162,19 +187,53 @@ async function sample(ms) {
   if (!xs.length) return null;
   return [xs.reduce((s, x) => s + x[0], 0) / xs.length, xs.reduce((s, x) => s + x[1], 0) / xs.length];
 }
+// Calibración a pantalla completa: los puntos van en los BORDES del celular (donde de verdad miras)
+const EDGE = { centro: [50, 50], izquierda: [6, 50], derecha: [94, 50], arriba: [50, 5], abajo: [50, 95] };
 $('btnCal').addEventListener('click', async () => {
   $('btnCal').disabled = $('btnEx').disabled = true;
+  const full = $('calFull'); full.hidden = false;
   const c = {};
   for (const d of DIRS) {
-    showTarget(d); $('msg').textContent = `Mira el punto (${d}) sin mover la cabeza…`;
+    const t = document.createElement('div'); t.className = 'target';
+    t.style.left = EDGE[d][0] + '%'; t.style.top = EDGE[d][1] + '%';
+    full.replaceChildren(t, $('calMsg')); $('calMsg').textContent = `Mira el punto (${d}) sin mover la cabeza…`;
     await wait(900);
     c[d] = await sample(1500);
-    if (!c[d]) { $('msg').textContent = 'No se vio tu cara. Intenta de nuevo con más luz.'; $('stage').replaceChildren(); $('btnCal').disabled = $('btnEx').disabled = false; return; }
+    if (!c[d]) { full.hidden = true; $('msg').textContent = 'No se vio tu cara. Intenta de nuevo con más luz.'; $('btnCal').disabled = $('btnEx').disabled = false; return; }
   }
+  full.hidden = true;
   calib = c; $('stage').replaceChildren(); $('msg').textContent = '✅ Calibrado';
   $('score').textContent = 'Calibrado. Ahora toca 👁 Ejercicio.';
   $('btnCal').disabled = $('btnEx').disabled = false;
   setTimeout(() => { $('msg').textContent = ''; }, 1500);
+});
+
+// ---------- Páginas: mirar ARRIBA 0.7 s = página 1, ABAJO 0.7 s = página 2 (los costados no cuentan) ----------
+const HOLD_MS = 700;
+let pager = null;
+function closePager() { if (!pager) return; cancelAnimationFrame(pager.raf); pager = null; $('pager').hidden = true; }
+$('pexit').addEventListener('click', closePager);
+$('btnPages').addEventListener('click', () => {
+  $('pager').hidden = false;
+  pager = { page: 1, dir: null, since: 0, raf: 0 };
+  $('track').style.transform = 'translateY(0)';
+  const tick = (now) => {
+    if (!pager) return;
+    const d = current === 'arriba' || current === 'abajo' ? current : null;
+    if (d !== pager.dir) { pager.dir = d; pager.since = now; }
+    const want = d === 'arriba' ? 1 : d === 'abajo' ? 2 : 0;
+    const pct = want && want !== pager.page ? Math.min(1, (now - pager.since) / HOLD_MS) : 0;
+    $('holdUp').style.width = (d === 'arriba' ? pct * 100 : 0) + '%';
+    $('holdDown').style.width = (d === 'abajo' ? pct * 100 : 0) + '%';
+    if (pct >= 1) {
+      pager.page = want;
+      $('track').style.transform = want === 2 ? 'translateY(-100%)' : 'translateY(0)';
+      try { navigator.vibrate?.(40); } catch { /* sin vibración */ }
+    }
+    $('pinfo').textContent = !calib ? 'Tip: calibra primero para mejor respuesta' : `Página ${pager.page} · mira ${pager.page === 1 ? 'ABAJO' : 'ARRIBA'} para cambiar`;
+    pager.raf = requestAnimationFrame(tick);
+  };
+  pager.raf = requestAnimationFrame(tick);
 });
 
 // ---------- Juego: el círculo avanza hacia donde miras; mirando al centro se detiene ----------
